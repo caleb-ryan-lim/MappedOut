@@ -1,0 +1,214 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum PreApprovalStatus {
+  APPROVED
+  REJECTED
+  UNKNOWN
+}
+
+enum MappingClassification {
+  strong
+  possible
+  weak
+  notRecommended
+}
+
+enum ScrapeJobType {
+  NUS_PARTNERS
+  PARTNER_DISCOVERY
+  PARTNER_COURSES
+}
+
+enum ScrapeJobStatus {
+  queued
+  running
+  succeeded
+  failed
+}
+
+enum DiscoveredUrlType {
+  OFFICIAL_COURSE_CATALOGUE
+  EXCHANGE_COURSE_LIST
+  DEPARTMENT_COURSE_PAGE
+  PDF_CATALOGUE
+  IRRELEVANT
+  UNKNOWN
+}
+
+model PartnerUniversity {
+  id                         String                @id @default(cuid())
+  name                       String
+  normalizedName             String                @unique
+  country                    String?
+  region                     String?
+  isOverseas                 Boolean?
+  isNusWidePartner           Boolean               @default(false)
+  isSocPartner               Boolean               @default(false)
+  nusSourceUrl               String?
+  officialExchangeUrl        String?
+  officialCourseCatalogueUrl String?
+  notes                      String?
+  createdAt                  DateTime              @default(now())
+  updatedAt                  DateTime              @updatedAt
+  overseasCourses            OverseasCourse[]
+  scrapeJobs                 ScrapeJob[]
+  discoveredCourseUrls       DiscoveredCourseUrl[]
+  mappingCandidates          MappingCandidate[]
+}
+
+model OverseasCourse {
+  id                            String             @id @default(cuid())
+  partnerUniversityId           String
+  courseCode                    String
+  normalizedCourseCode          String
+  title                         String
+  department                    String?
+  faculty                       String?
+  academicLevel                 String?
+  creditsRaw                    String?
+  creditsNormalized             Float?
+  creditSystem                  String?
+  workloadHours                 Float?
+  semesterOffered               String?
+  languageOfInstruction         String?
+  gradingMode                   String?
+  isAvailableToExchangeStudents Boolean?
+  isOnlineOrHybrid              Boolean?
+  prerequisites                 String?
+  description                   String?
+  topics                        String?
+  learningOutcomes              String?
+  assessment                    String?
+  sourceUrl                     String
+  rawMarkdownSnapshotPath       String?
+  scrapedAt                     DateTime?
+  createdAt                     DateTime           @default(now())
+  updatedAt                     DateTime           @updatedAt
+  partnerUniversity             PartnerUniversity  @relation(fields: [partnerUniversityId], references: [id], onDelete: Cascade)
+  mappingCandidates             MappingCandidate[]
+
+  @@unique([partnerUniversityId, normalizedCourseCode, sourceUrl])
+  @@index([partnerUniversityId, normalizedCourseCode])
+}
+
+model NusModule {
+  id                String             @id @default(cuid())
+  moduleCode        String             @unique
+  title             String
+  units             Float?
+  faculty           String?
+  department        String?
+  description       String?
+  prerequisites     String?
+  workload          Json?
+  semesterData      Json?
+  sourceUrl         String?
+  lastFetchedAt     DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  mappingCandidates MappingCandidate[]
+}
+
+model HistoricalMapping {
+  id                         String                @id @default(cuid())
+  faculty                    String?
+  partnerUniversityRaw       String
+  partnerUniversityNormalized String
+  puCourse1Code              String?
+  puCourse1Title             String?
+  puCourse1Units             String?
+  puCourse2Code              String?
+  puCourse2Title             String?
+  puCourse2Units             String?
+  nusCourse1Code             String?
+  nusCourse1TitleRaw         String?
+  nusCourse1Units            String?
+  nusCourse2Code             String?
+  nusCourse2TitleRaw         String?
+  nusCourse2Units            String?
+  preApprovedRaw             String?
+  preApprovalStatus          PreApprovalStatus
+  sourceFileName             String
+  sourceSheetName            String
+  sourceRowNumber            Int
+  originalRowJson            Json
+  warningsJson               Json?
+  importedAt                 DateTime             @default(now())
+  createdAt                  DateTime             @default(now())
+  updatedAt                  DateTime             @updatedAt
+  importRunId                String?
+  importRun                  HistoricalImportRun? @relation(fields: [importRunId], references: [id], onDelete: SetNull)
+  mappingCandidates          MappingCandidate[]
+
+  @@unique([partnerUniversityNormalized, puCourse1Code, puCourse2Code, nusCourse1Code, nusCourse2Code, sourceFileName, sourceSheetName, sourceRowNumber])
+  @@index([partnerUniversityNormalized, nusCourse1Code])
+}
+
+model MappingCandidate {
+  id                     String                @id @default(cuid())
+  nusModuleId            String
+  partnerUniversityId    String
+  overseasCourseId       String
+  historicalMappingId    String?
+  contentSimilarityScore Float
+  workloadScore          Float
+  levelScore             Float
+  prerequisiteScore      Float
+  historicalMappingScore Float
+  availabilityScore      Float
+  restrictionPenalty     Float
+  finalScore             Float
+  classification         MappingClassification
+  explanation            String
+  warningsJson           Json?
+  evidenceJson           Json?
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+  nusModule              NusModule             @relation(fields: [nusModuleId], references: [id], onDelete: Cascade)
+  partnerUniversity      PartnerUniversity     @relation(fields: [partnerUniversityId], references: [id], onDelete: Cascade)
+  overseasCourse         OverseasCourse        @relation(fields: [overseasCourseId], references: [id], onDelete: Cascade)
+  historicalMapping      HistoricalMapping?    @relation(fields: [historicalMappingId], references: [id], onDelete: SetNull)
+}
+
+model ScrapeJob {
+  id                  String             @id @default(cuid())
+  type                ScrapeJobType
+  status              ScrapeJobStatus
+  targetUrl           String?
+  partnerUniversityId String?
+  startedAt           DateTime?
+  finishedAt          DateTime?
+  errorMessage        String?
+  resultSummaryJson   Json?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  partnerUniversity   PartnerUniversity? @relation(fields: [partnerUniversityId], references: [id], onDelete: SetNull)
+}
+
+model HistoricalImportRun {
+  id             String              @id @default(cuid())
+  sourceFileName String
+  sourceSheetName String
+  summaryJson    Json
+  createdAt      DateTime            @default(now())
+  mappings       HistoricalMapping[]
+}
+
+model DiscoveredCourseUrl {
+  id                  String             @id @default(cuid())
+  partnerUniversityId String
+  url                 String
+  classification      DiscoveredUrlType
+  query               String?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  partnerUniversity   PartnerUniversity  @relation(fields: [partnerUniversityId], references: [id], onDelete: Cascade)
+
+  @@unique([partnerUniversityId, url])
+}
