@@ -15,18 +15,26 @@ type NusModsModule = {
   semesterData?: unknown;
 };
 
+async function fetchFromNUSMods(normalizedCode: string, year: number) {
+  const ay = `AY${year}/${year + 1}`;
+  const url = `https://api.nusmods.com/v2/${ay}/modules/${normalizedCode}.json`;
+  const response = await fetch(url, { next: { revalidate: 60 * 60 * 24 } });
+  if (!response.ok) return null;
+  return { data: (await response.json()) as NusModsModule, url };
+}
+
 export async function fetchNusModule(code: string) {
   const normalizedCode = normalizeModuleCode(code);
   const currentYear = new Date().getFullYear();
-  const ay = `AY${currentYear}/${currentYear + 1}`;
-  const url = `https://api.nusmods.com/v2/${ay}/modules/${normalizedCode}.json`;
-  const response = await fetch(url, { next: { revalidate: 60 * 60 * 24 } });
 
-  if (!response.ok) {
-    return null;
-  }
+  // Try current AY first, fall back to the previous one (NUSMods lags by ~6 months)
+  const result =
+    (await fetchFromNUSMods(normalizedCode, currentYear)) ??
+    (await fetchFromNUSMods(normalizedCode, currentYear - 1));
 
-  const data = (await response.json()) as NusModsModule;
+  if (!result) return null;
+
+  const { data, url } = result;
 
   return prisma.nusModule.upsert({
     where: { moduleCode: normalizedCode },

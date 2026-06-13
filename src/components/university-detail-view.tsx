@@ -1,7 +1,31 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+
+type NusModule = {
+  code: string;
+  title: string;
+  description: string | null;
+  units: number | null;
+  semesters: string | null;
+};
+
+type ProfileData = {
+  id: string;
+  name: string;
+  country: string | null;
+  region: string | null;
+  officialExchangeUrl: string | null;
+  heroImageUrl: string | null;
+  language: string;
+  exchangeSpots: number | null;
+  applicationDeadline: string | null;
+  about: string | null;
+  areasOfStudy: string[];
+  totalOverseasCourses: number;
+  nusModules: NusModule[];
+};
 
 type UniversityDetailViewProps = {
   partnerUniversityId: string;
@@ -13,244 +37,253 @@ type UniversityDetailViewProps = {
   };
 };
 
-type ApiResponse = {
-  inputModules: string[];
-  unresolvedModules: string[];
-  rankedUniversities: Array<{
-    partnerUniversityId: string;
-    name: string;
-    country: string | null;
-    strongMappingCount: number;
-    possibleMappingCount: number;
-    averageConfidence: number;
-    warnings: string[];
-    unmappedModules: string[];
-    moduleMappings: Array<{
-      nusModuleCode: string;
-      courseCode: string;
-      title: string;
-      confidence: number;
-      classification: string;
-      explanation: string;
-      warnings: string[];
-      sourceUrls: string[];
-      historicalEvidence: {
-        foundInExcel: boolean;
-        preApprovalStatus: string | null;
-        sourceRowNumbers: number[];
-      };
-      scoreBreakdown: Record<string, number>;
-    }>;
-  }>;
+const MODULE_CHIP_COLORS: Record<string, string> = {
+  CS: "bg-teal-800 text-white",
+  IS: "bg-blue-700 text-white",
+  BT: "bg-blue-500 text-white",
+  MKT: "bg-orange-500 text-white",
+  DSA: "bg-purple-600 text-white",
+  MA: "bg-green-700 text-white",
+  ST: "bg-green-500 text-white",
+  PH: "bg-red-500 text-white",
+  EC: "bg-yellow-600 text-black",
+  CG: "bg-indigo-600 text-white",
+  EE: "bg-cyan-700 text-white",
+  ME: "bg-slate-600 text-white",
 };
+
+function chipColor(code: string) {
+  const prefix = code.match(/^[A-Z]+/)?.[0] ?? "";
+  return MODULE_CHIP_COLORS[prefix] ?? "bg-stone-700 text-white";
+}
 
 export function UniversityDetailView({
   partnerUniversityId,
   request,
 }: UniversityDetailViewProps) {
-  const [data, setData] = useState<ApiResponse | null>(null);
+  const [data, setData] = useState<ProfileData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [imgFailed, setImgFailed] = useState(false);
+
+  const backQuery = new URLSearchParams({
+    modules: request.nusModuleCodes.join(","),
+    semester: request.targetSemester ?? "",
+    countries: request.preferredCountries?.join(",") ?? "",
+    overseasOnly: String(request.overseasOnly ?? true),
+  }).toString();
 
   useEffect(() => {
     const controller = new AbortController();
+    const modulesParam = encodeURIComponent(request.nusModuleCodes.join(","));
+    const url = `/api/universities/${partnerUniversityId}/profile?modules=${modulesParam}`;
 
-    fetch("/api/map", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(request),
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        if (!response.ok) {
-          const payload = await response.json().catch(() => null);
-          throw new Error(payload?.error ?? "Unable to load university detail.");
+    fetch(url, { signal: controller.signal })
+      .then(async (res) => {
+        if (!res.ok) {
+          const payload = await res.json().catch(() => null);
+          throw new Error(payload?.error ?? "Unable to load university profile.");
         }
-        return response.json();
+        return res.json() as Promise<ProfileData>;
       })
-      .then((payload) => setData(payload))
+      .then(setData)
       .catch((err: Error) => {
-        if (err.name !== "AbortError") {
-          setError(err.message);
-        }
+        if (err.name !== "AbortError") setError(err.message);
       });
 
     return () => controller.abort();
-  }, [request]);
-
-  const university = useMemo(
-    () =>
-      data?.rankedUniversities.find(
-        (entry) => entry.partnerUniversityId === partnerUniversityId,
-      ) ?? null,
-    [data, partnerUniversityId],
-  );
+  }, [partnerUniversityId, request.nusModuleCodes]);
 
   if (error) {
     return (
-      <section className="glass-panel rounded-[2rem] p-8">
-        <p className="text-lg font-semibold">We hit a blocker.</p>
+      <div className="glass-panel rounded-[2rem] p-8">
+        <p className="text-lg font-semibold">Something went wrong.</p>
         <p className="mt-2 text-sm text-[var(--ink-soft)]">{error}</p>
-      </section>
+        <Link
+          href={`/results?${backQuery}`}
+          className="mt-4 inline-block rounded-full border border-[var(--line)] px-4 py-2 text-sm"
+        >
+          ← Back to results
+        </Link>
+      </div>
     );
   }
 
   if (!data) {
     return (
-      <section className="glass-panel rounded-[2rem] p-8">
-        <p className="text-lg font-semibold">Loading university detail...</p>
+      <div className="glass-panel rounded-[2rem] p-8">
+        <p className="text-lg font-semibold">Loading university profile...</p>
         <p className="mt-2 text-sm text-[var(--ink-soft)]">
-          Pulling current ranking evidence for this partner.
+          Fetching exchange information and available modules.
         </p>
-      </section>
+      </div>
     );
   }
 
-  if (!university) {
-    return (
-      <section className="glass-panel rounded-[2rem] p-8">
-        <p className="text-lg font-semibold">This university is not in the current shortlist.</p>
-        <p className="mt-2 text-sm text-[var(--ink-soft)]">
-          Try broadening your filters or go back to the results page.
-        </p>
-      </section>
-    );
-  }
+  const location =
+    [data.region, data.country].filter(Boolean).join(", ") ||
+    data.country ||
+    "Location unknown";
+
+  const showHero = Boolean(data.heroImageUrl) && !imgFailed;
 
   return (
-    <div className="space-y-6">
-      <div className="glass-panel overflow-hidden rounded-[2.2rem]">
-        <div className="grid gap-0 lg:grid-cols-[1.15fr_0.85fr]">
-          <div className="space-y-5 p-6 md:p-8">
-            <div className="space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[var(--accent)]">
-                University detail
-              </p>
-              <h1 className="font-[family-name:var(--font-display)] text-4xl leading-none md:text-6xl">
-                {university.name}
-              </h1>
-              <p className="max-w-3xl text-sm leading-7 text-[var(--ink-soft)]">
-                Review the evidence behind each suggested mapping.
-              </p>
-            </div>
-            <div className="grid gap-4 md:grid-cols-3">
-              <MetricCard label="Strong mappings" value={String(university.strongMappingCount)} />
-              <MetricCard label="Possible mappings" value={String(university.possibleMappingCount)} />
-              <MetricCard
-                label="Average confidence"
-                value={`${Math.round(university.averageConfidence * 100)}%`}
-              />
-            </div>
-          </div>
-          <div className="min-h-72 bg-[radial-gradient(circle_at_top,_rgba(255,213,163,0.44),_transparent_32%),linear-gradient(180deg,_rgba(194,116,62,0.12),_rgba(255,255,255,0.04))]" />
+    <div className="space-y-5">
+      {/* Back button */}
+      <Link
+        href={`/results?${backQuery}`}
+        className="inline-flex items-center gap-1.5 rounded-full border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-2 text-sm"
+      >
+        ← Back to search
+      </Link>
+
+      {/* Hero banner */}
+      <div className="relative overflow-hidden rounded-[2rem]">
+        {showHero ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={data.heroImageUrl!}
+            alt={data.name}
+            className="h-64 w-full object-cover md:h-80"
+            onError={() => setImgFailed(true)}
+          />
+        ) : (
+          <div className="h-64 w-full bg-[radial-gradient(circle_at_top,_rgba(255,213,163,0.44),_transparent_60%),linear-gradient(180deg,_rgba(194,116,62,0.22),_rgba(232,220,204,0.9))] md:h-80" />
+        )}
+        {/* Gradient overlay for text legibility */}
+        <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-black/60 to-transparent" />
+        <div className="absolute bottom-0 left-0 p-6">
+          <p className="text-sm text-white/75">📍 {location}</p>
+          <h1 className="mt-1 font-[family-name:var(--font-display)] text-4xl leading-tight text-white md:text-5xl">
+            {data.name}
+          </h1>
         </div>
       </div>
 
-      {university.moduleMappings.map((mapping) => (
-        <article key={`${university.partnerUniversityId}-${mapping.nusModuleCode}`} className="glass-panel rounded-[2rem] p-6">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--ink-soft)]">
-                {mapping.nusModuleCode}
-              </p>
-              <h2 className="mt-2 font-[family-name:var(--font-display)] text-3xl leading-none">
-                {mapping.courseCode} / {mapping.title}
-              </h2>
-            </div>
-            <div className="rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface-strong)] px-5 py-4 text-right">
-              <p className="text-xs uppercase tracking-[0.2em] text-[var(--ink-soft)]">
-                {mapping.classification}
-              </p>
-              <p className="mt-2 text-3xl font-semibold">
-                {Math.round(mapping.confidence * 100)}%
-              </p>
-            </div>
-          </div>
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <StatCard icon="🌐" label="Language" value={data.language} />
+        <StatCard
+          icon="👥"
+          label="Exchange Spots"
+          value={data.exchangeSpots ? `${data.exchangeSpots} students` : "—"}
+        />
+        <StatCard
+          icon="📅"
+          label="Deadline"
+          value={data.applicationDeadline ?? "—"}
+        />
+        <StatCard
+          icon="📖"
+          label="Modules Available"
+          value={
+            data.nusModules.length > 0
+              ? `${data.nusModules.length} module${data.nusModules.length !== 1 ? "s" : ""}`
+              : data.totalOverseasCourses > 0
+                ? `${data.totalOverseasCourses} courses`
+                : "—"
+          }
+        />
+      </div>
 
-          <p className="mt-4 text-sm leading-7 text-[var(--ink-soft)]">{mapping.explanation}</p>
+      {/* About + Modules */}
+      <div className="grid gap-5 lg:grid-cols-2">
+        {/* About */}
+        <div className="glass-panel rounded-[2rem] p-6 space-y-4">
+          <h2 className="font-semibold">About</h2>
+          <p className="text-sm leading-7 text-[var(--ink-soft)]">
+            {data.about ??
+              `${data.name} is a partner university in the NUS Student Exchange Programme. Visit the official page for the latest intake information.`}
+          </p>
 
-          <div className="mt-5 grid gap-4 lg:grid-cols-3">
-            <InfoPanel title="Historical evidence">
-              <p>Found in workbook: {mapping.historicalEvidence.foundInExcel ? "Yes" : "No"}</p>
-              <p>Status: {mapping.historicalEvidence.preApprovalStatus ?? "UNKNOWN"}</p>
-              <p>
-                Source rows:{" "}
-                {mapping.historicalEvidence.sourceRowNumbers.length
-                  ? mapping.historicalEvidence.sourceRowNumbers.join(", ")
-                  : "None"}
-              </p>
-            </InfoPanel>
-            <InfoPanel title="Score breakdown">
-              {Object.entries(mapping.scoreBreakdown).map(([key, value]) => (
-                <div key={key} className="flex items-center justify-between gap-3">
-                  <span>{key}</span>
-                  <span className="font-semibold text-[var(--foreground)]">
-                    {value.toFixed(2)}
-                  </span>
-                </div>
-              ))}
-            </InfoPanel>
-            <InfoPanel title="Warnings and sources">
-              {mapping.warnings.length ? (
-                <div className="space-y-1">
-                  {mapping.warnings.map((warning) => (
-                    <p key={warning}>{warning}</p>
-                  ))}
-                </div>
-              ) : (
-                <p>No immediate warnings for this mapping.</p>
-              )}
-              <div className="mt-4 space-y-1">
-                {mapping.sourceUrls.map((url) => (
-                  <a
-                    key={url}
-                    className="block truncate text-[var(--accent)]"
-                    href={url}
-                    rel="noreferrer"
-                    target="_blank"
+          {data.areasOfStudy.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-sm font-semibold">Areas of Study</p>
+              <div className="flex flex-wrap gap-2">
+                {data.areasOfStudy.map((area) => (
+                  <span
+                    key={area}
+                    className="rounded-full border border-[var(--line)] bg-[var(--surface-strong)] px-3 py-1 text-xs text-[var(--ink-soft)]"
                   >
-                    {url}
-                  </a>
+                    {area}
+                  </span>
                 ))}
               </div>
-            </InfoPanel>
-          </div>
-        </article>
-      ))}
+            </div>
+          )}
 
-      <div className="flex items-center justify-between gap-4">
-        <p className="text-sm text-[var(--ink-soft)]">
-          Unmapped modules here: {university.unmappedModules.join(", ") || "None"}
-        </p>
-        <Link href="/results" className="rounded-full border border-[var(--line)] px-4 py-2 text-sm font-medium">
-          Back to results
-        </Link>
+          {data.officialExchangeUrl && (
+            <a
+              href={data.officialExchangeUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-block text-sm text-[var(--accent)] underline-offset-4 hover:underline"
+            >
+              View exchange programme page →
+            </a>
+          )}
+        </div>
+
+        {/* Available Modules */}
+        <div className="glass-panel rounded-[2rem] p-6 space-y-4">
+          <h2 className="font-semibold">Available Modules</h2>
+          {data.nusModules.length === 0 ? (
+            <p className="text-sm text-[var(--ink-soft)]">
+              No planned modules were submitted. Go back to the planner and enter your NUS module codes to see matches here.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {data.nusModules.map((mod) => (
+                <div
+                  key={mod.code}
+                  className="rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface-strong)] p-4"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                      <span
+                        className={`shrink-0 rounded-lg px-2 py-0.5 text-xs font-semibold ${chipColor(mod.code)}`}
+                      >
+                        {mod.code}
+                      </span>
+                      <span className="min-w-0 text-sm font-semibold leading-snug">
+                        {mod.title}
+                      </span>
+                    </div>
+                    <div className="shrink-0 text-right text-xs text-[var(--ink-soft)]">
+                      {mod.semesters && <p>{mod.semesters}</p>}
+                      {mod.units != null && <p>{mod.units} MCs</p>}
+                    </div>
+                  </div>
+                  {mod.description && (
+                    <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-[var(--ink-soft)]">
+                      {mod.description}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-function MetricCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface-strong)] px-5 py-4">
-      <p className="text-xs uppercase tracking-[0.18em] text-[var(--ink-soft)]">{label}</p>
-      <p className="mt-2 text-3xl font-semibold">{value}</p>
-    </div>
-  );
-}
-
-function InfoPanel({
-  title,
-  children,
+function StatCard({
+  icon,
+  label,
+  value,
 }: {
-  title: string;
-  children: React.ReactNode;
+  icon: string;
+  label: string;
+  value: string;
 }) {
   return (
-    <div className="rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface-strong)] p-4 text-sm leading-7 text-[var(--ink-soft)]">
-      <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent)]">
-        {title}
-      </p>
-      {children}
+    <div className="glass-panel rounded-[1.5rem] p-4">
+      <div className="flex items-center gap-2 text-[var(--ink-soft)]">
+        <span className="text-base">{icon}</span>
+        <p className="text-xs">{label}</p>
+      </div>
+      <p className="mt-2 font-semibold text-sm">{value}</p>
     </div>
   );
 }

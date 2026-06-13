@@ -3,9 +3,11 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
+type ModuleEntry = { code: string; title: string };
+
 function SearchIcon() {
   return (
-    <svg aria-hidden="true" className="h-7 w-7 text-[var(--muted-foreground)]" fill="none" viewBox="0 0 24 24">
+    <svg aria-hidden="true" className="h-7 w-7 shrink-0 text-[var(--muted-foreground)]" fill="none" viewBox="0 0 24 24">
       <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.8" />
       <path d="M16.5 16.5L21 21" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
     </svg>
@@ -49,26 +51,62 @@ export function ModulePlannerForm() {
   const router = useRouter();
   const [entry, setEntry] = useState("");
   const [semester, setSemester] = useState("Semester 1");
-  const [modules, setModules] = useState<string[]>([]);
+  const [modules, setModules] = useState<ModuleEntry[]>([]);
+  const [validating, setValidating] = useState(false);
+  const [errors, setErrors] = useState<string[]>([]);
   const [isPending, startTransition] = useTransition();
 
-  const moduleValue = useMemo(() => modules.join(","), [modules]);
+  const moduleValue = useMemo(() => modules.map((m) => m.code).join(","), [modules]);
 
-  function handleAdd() {
-    const next = normalizeEntries(entry);
-    if (next.length === 0) {
-      return;
+  async function handleAdd() {
+    const codes = normalizeEntries(entry);
+    if (codes.length === 0) return;
+
+    setValidating(true);
+    setErrors([]);
+
+    const results = await Promise.all(
+      codes.map(async (code) => {
+        try {
+          const res = await fetch(`/api/modules/${encodeURIComponent(code)}`);
+          if (!res.ok) return { code, valid: false, title: "" };
+          const data = (await res.json()) as { title?: string };
+          return { code, valid: true, title: data.title ?? code };
+        } catch {
+          return { code, valid: false, title: "" };
+        }
+      }),
+    );
+
+    setValidating(false);
+
+    const valid = results.filter((r) => r.valid);
+    const invalid = results.filter((r) => !r.valid).map((r) => r.code);
+
+    if (valid.length > 0) {
+      setModules((prev) => {
+        const existing = new Set(prev.map((m) => m.code));
+        return [
+          ...prev,
+          ...valid
+            .filter((v) => !existing.has(v.code))
+            .map((v) => ({ code: v.code, title: v.title })),
+        ];
+      });
+      setEntry("");
     }
 
-    setModules((current) => [...new Set([...current, ...next])]);
-    setEntry("");
+    if (invalid.length > 0) {
+      setErrors(
+        invalid.map(
+          (c) => `"${c}" was not found on NUSMods — check the module code and try again.`,
+        ),
+      );
+    }
   }
 
   function handleSubmit() {
-    if (modules.length === 0) {
-      return;
-    }
-
+    if (modules.length === 0) return;
     startTransition(() => {
       const params = new URLSearchParams({
         modules: moduleValue,
@@ -104,23 +142,42 @@ export function ModulePlannerForm() {
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
                   event.preventDefault();
-                  handleAdd();
+                  void handleAdd();
                 }
               }}
-              className="w-full bg-transparent text-[2rem] text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]"
+              disabled={validating}
+              className="w-full bg-transparent text-[2rem] text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] disabled:opacity-50"
               placeholder="e.g. CS2040, BT3102, IS3103..."
             />
           </label>
 
           <button
             type="button"
-            onClick={handleAdd}
-            className="flex h-20 min-w-48 items-center justify-center gap-3 rounded-[1.5rem] bg-[var(--foreground)] px-8 text-[2rem] font-medium text-white"
+            onClick={() => void handleAdd()}
+            disabled={validating || entry.trim() === ""}
+            className="flex h-20 min-w-48 items-center justify-center gap-3 rounded-[1.5rem] bg-[var(--foreground)] px-8 text-[2rem] font-medium text-white disabled:opacity-60"
           >
-            <PlusIcon />
-            Add
+            {validating ? (
+              <span className="text-xl">Checking...</span>
+            ) : (
+              <>
+                <PlusIcon />
+                Add
+              </>
+            )}
           </button>
         </div>
+
+        {/* Validation errors */}
+        {errors.length > 0 && (
+          <div className="mt-4 space-y-1">
+            {errors.map((err) => (
+              <p key={err} className="text-sm text-red-500">
+                {err}
+              </p>
+            ))}
+          </div>
+        )}
 
         <div className="mt-5 flex flex-wrap items-center gap-3 text-lg text-[var(--muted-foreground)]">
           <span>Semester</span>
@@ -134,20 +191,28 @@ export function ModulePlannerForm() {
           </select>
         </div>
 
-        {modules.length > 0 ? (
+        {modules.length > 0 && (
           <div className="mt-6 flex flex-wrap gap-3">
-            {modules.map((module) => (
+            {modules.map((mod) => (
               <button
-                key={module}
+                key={mod.code}
                 type="button"
-                onClick={() => setModules((current) => current.filter((item) => item !== module))}
-                className="rounded-full border border-[var(--line)] bg-white px-4 py-2 text-lg text-[var(--foreground)]"
+                onClick={() =>
+                  setModules((current) => current.filter((m) => m.code !== mod.code))
+                }
+                className="flex items-center gap-2 rounded-full border border-[var(--line)] bg-white px-4 py-2"
               >
-                {module}
+                <span className="text-base font-semibold text-[var(--foreground)]">
+                  {mod.code}
+                </span>
+                <span className="max-w-[180px] truncate text-sm text-[var(--muted-foreground)]">
+                  {mod.title}
+                </span>
+                <span className="text-xs text-[var(--muted-foreground)]">×</span>
               </button>
             ))}
           </div>
-        ) : null}
+        )}
 
         <p className="mt-6 text-lg text-[var(--muted-foreground)]">
           {modules.length === 0
