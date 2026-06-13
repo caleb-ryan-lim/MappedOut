@@ -183,7 +183,12 @@ export function ResultsDashboard({ request }: ResultsProps) {
       </div>
 
       {data.rankedUniversities.map((university, index) => (
-        <section key={university.partnerUniversityId} className="glass-panel overflow-hidden rounded-[2rem]">
+        <Link
+          key={university.partnerUniversityId}
+          href={`/universities/${university.partnerUniversityId}?${detailQuery}`}
+          className="block"
+        >
+        <section className="glass-panel overflow-hidden rounded-[2rem] transition-transform hover:-translate-y-0.5">
           <div className="grid gap-0 lg:grid-cols-[1.1fr_0.9fr]">
             <div className="space-y-5 p-6">
               <div className="flex flex-wrap items-center justify-between gap-4">
@@ -198,12 +203,9 @@ export function ResultsDashboard({ request }: ResultsProps) {
                     {university.country ?? "Country unknown"}
                   </p>
                 </div>
-                <Link
-                  href={`/universities/${university.partnerUniversityId}?${detailQuery}`}
-                  className="rounded-full border border-[var(--line)] px-4 py-2 text-sm font-medium"
-                >
-                  Open detail page
-                </Link>
+                <span className="rounded-full border border-[var(--line)] px-4 py-2 text-sm font-medium">
+                  View details →
+                </span>
               </div>
 
               <div className="grid grid-cols-3 gap-3 text-center text-sm">
@@ -283,6 +285,7 @@ export function ResultsDashboard({ request }: ResultsProps) {
             </div>
           </div>
         </section>
+        </Link>
       ))}
     </div>
   );
