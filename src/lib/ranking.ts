@@ -23,6 +23,29 @@ export async function rankUniversities(request: MapRequest) {
     },
   });
 
+  // No historical evidence for these modules → return all partners as unranked browse results
+  if (historicalMappings.length === 0) {
+    const allPartners = await prisma.partnerUniversity.findMany({
+      where: {
+        ...(request.overseasOnly !== false ? { isOverseas: { not: false } } : {}),
+        ...(request.preferredCountries?.length ? { country: { in: request.preferredCountries } } : {}),
+      },
+      orderBy: { name: "asc" },
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return allPartners.map((partner) => ({
+      partnerUniversityId: partner.id,
+      name: partner.name,
+      country: partner.country,
+      strongMappingCount: 0,
+      possibleMappingCount: 0,
+      averageConfidence: 0,
+      warnings: [] as string[],
+      moduleMappings: [] as any[],
+      unmappedModules: moduleCodes,
+    }));
+  }
+
   const partnerNames = [...new Set(historicalMappings.map((mapping) => mapping.partnerUniversityNormalized))];
   const partners = await prisma.partnerUniversity.findMany({
     where: {

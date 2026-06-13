@@ -29,6 +29,7 @@ type ApiResponse = {
   rankedUniversities: RankedUniversity[];
   unresolvedModules: string[];
   emptyState?: { title: string; message: string } | null;
+  browseMode?: boolean;
 };
 
 type ErrorPayload = {
@@ -235,6 +236,15 @@ export function ModulePlannerForm() {
           <p className="mt-3 text-xs text-[var(--warning)]">
             Could not resolve: {results.unresolvedModules.join(", ")}
           </p>
+        )}
+
+        {results.browseMode && (
+          <div className="mt-4 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-3 text-sm">
+            <p className="font-medium text-[var(--foreground)]">Browse mode — no matching history yet</p>
+            <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">
+              Showing all partner universities. Module-specific recommendations will appear once SEP mapping data is imported.
+            </p>
+          </div>
         )}
 
         {results.rankedUniversities.length === 0 ? (
