@@ -16,7 +16,6 @@ type NusModsModule = {
 };
 
 async function fetchFromNUSMods(normalizedCode: string, ayStartYear: number) {
-  // NUSMods URL format: /v2/2025-2026/modules/CS1010A.json
   const ay = `${ayStartYear}-${ayStartYear + 1}`;
   const url = `https://api.nusmods.com/v2/${ay}/modules/${normalizedCode}.json`;
   const response = await fetch(url, { next: { revalidate: 60 * 60 * 24 } });
@@ -27,53 +26,44 @@ async function fetchFromNUSMods(normalizedCode: string, ayStartYear: number) {
 export async function fetchNusModule(code: string) {
   const normalizedCode = normalizeModuleCode(code);
   const now = new Date();
-  // NUSMods academic year starts in August; before August we're still in the previous AY
+  // NUSMods AY starts in August; before August we're still in the previous AY
   const ayStartYear =
     now.getMonth() < 7 ? now.getFullYear() - 1 : now.getFullYear();
 
-  // Try the current AY, fall back to the one before it
-  const result =
-    (await fetchFromNUSMods(normalizedCode, ayStartYear)) ??
-    (await fetchFromNUSMods(normalizedCode, ayStartYear - 1));
+  // Try current AY and up to 3 previous years to handle recently-discontinued modules
+  let result = null;
+  for (let offset = 0; offset <= 3; offset++) {
+    result = await fetchFromNUSMods(normalizedCode, ayStartYear - offset);
+    if (result) break;
+  }
 
   if (!result) return null;
 
   const { data, url } = result;
 
-  return prisma.nusModule.upsert({
-    where: { moduleCode: normalizedCode },
-    update: {
-      title: data.title,
-      units: Number(data.moduleCredit ?? "0") || null,
-      faculty: data.faculty ?? null,
-      department: data.department ?? null,
-      description: data.description ?? null,
-      prerequisites: data.prerequisite ?? null,
-      workload: data.workload
-        ? (data.workload as Prisma.InputJsonValue)
-        : Prisma.JsonNull,
-      semesterData: data.semesterData
-        ? (data.semesterData as Prisma.InputJsonValue)
-        : Prisma.JsonNull,
-      sourceUrl: url,
-      lastFetchedAt: new Date(),
-    },
-    create: {
-      moduleCode: normalizedCode,
-      title: data.title,
-      units: Number(data.moduleCredit ?? "0") || null,
-      faculty: data.faculty ?? null,
-      department: data.department ?? null,
-      description: data.description ?? null,
-      prerequisites: data.prerequisite ?? null,
-      workload: data.workload
-        ? (data.workload as Prisma.InputJsonValue)
-        : Prisma.JsonNull,
-      semesterData: data.semesterData
-        ? (data.semesterData as Prisma.InputJsonValue)
-        : Prisma.JsonNull,
-      sourceUrl: url,
-      lastFetchedAt: new Date(),
-    },
-  });
+  const fields = {
+    title: data.title,
+    units: Number(data.moduleCredit ?? "0") || null,
+    faculty: data.faculty ?? null,
+    department: data.department ?? null,
+    description: data.description ?? null,
+    prerequisites: data.prerequisite ?? null,
+    workload: data.workload ? (data.workload as Prisma.InputJsonValue) : Prisma.JsonNull,
+    semesterData: data.semesterData
+      ? (data.semesterData as Prisma.InputJsonValue)
+      : Prisma.JsonNull,
+    sourceUrl: url,
+    lastFetchedAt: new Date(),
+  };
+
+  try {
+    return await prisma.nusModule.upsert({
+      where: { moduleCode: normalizedCode },
+      update: fields,
+      create: { moduleCode: normalizedCode, ...fields },
+    });
+  } catch {
+    // DB not yet initialised — return the NUSMods data directly so validation still works
+    return { moduleCode: normalizedCode, ...fields };
+  }
 }
