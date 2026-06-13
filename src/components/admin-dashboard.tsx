@@ -79,6 +79,27 @@ export function AdminDashboard() {
     };
   }, []);
 
+  async function handleBootstrap() {
+    setMessage("Running bootstrap… this may take 30–60 seconds.");
+    const response = await fetch("/api/admin/bootstrap", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const payload = await response.json();
+    if (response.ok) {
+      const summary = payload.importSummary as { rowsImported?: number; uniquePartnerUniversities?: number };
+      const partners = payload.partnerSummary as { importedPartners?: number } | null;
+      setMessage(
+        `Bootstrap complete: ${summary.rowsImported ?? 0} mappings, ${summary.uniquePartnerUniversities ?? 0} universities from Excel` +
+          (partners ? `, ${partners.importedPartners ?? 0} partners from NUS website` : ""),
+      );
+    } else {
+      setMessage(payload.error ?? "Bootstrap failed.");
+    }
+    await refresh();
+  }
+
   async function handleImport(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
@@ -183,6 +204,22 @@ export function AdminDashboard() {
             </pre>
           </div>
         </div>
+      </section>
+
+      <section className="glass-panel rounded-[2rem] p-6">
+        <h2 className="text-xl font-semibold">One-click bootstrap</h2>
+        <p className="mt-2 text-sm text-[var(--ink-soft)]">
+          Imports the bundled <code>data/soc-sep-mapping-list.xlsx</code> workbook and refreshes NUS partner universities
+          in one step. Run this once after the first deploy.
+        </p>
+        <button
+          type="button"
+          onClick={handleBootstrap}
+          disabled={!databaseReady}
+          className="mt-5 rounded-full bg-[var(--foreground)] px-6 py-3 text-sm font-semibold text-white disabled:opacity-50"
+        >
+          Run bootstrap →
+        </button>
       </section>
 
       <section className="grid gap-6 lg:grid-cols-[1fr_1fr]">
