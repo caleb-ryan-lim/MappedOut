@@ -15,8 +15,9 @@ type NusModsModule = {
   semesterData?: unknown;
 };
 
-async function fetchFromNUSMods(normalizedCode: string, year: number) {
-  const ay = `AY${year}/${year + 1}`;
+async function fetchFromNUSMods(normalizedCode: string, ayStartYear: number) {
+  // NUSMods URL format: /v2/2025-2026/modules/CS1010A.json
+  const ay = `${ayStartYear}-${ayStartYear + 1}`;
   const url = `https://api.nusmods.com/v2/${ay}/modules/${normalizedCode}.json`;
   const response = await fetch(url, { next: { revalidate: 60 * 60 * 24 } });
   if (!response.ok) return null;
@@ -25,12 +26,15 @@ async function fetchFromNUSMods(normalizedCode: string, year: number) {
 
 export async function fetchNusModule(code: string) {
   const normalizedCode = normalizeModuleCode(code);
-  const currentYear = new Date().getFullYear();
+  const now = new Date();
+  // NUSMods academic year starts in August; before August we're still in the previous AY
+  const ayStartYear =
+    now.getMonth() < 7 ? now.getFullYear() - 1 : now.getFullYear();
 
-  // Try current AY first, fall back to the previous one (NUSMods lags by ~6 months)
+  // Try the current AY, fall back to the one before it
   const result =
-    (await fetchFromNUSMods(normalizedCode, currentYear)) ??
-    (await fetchFromNUSMods(normalizedCode, currentYear - 1));
+    (await fetchFromNUSMods(normalizedCode, ayStartYear)) ??
+    (await fetchFromNUSMods(normalizedCode, ayStartYear - 1));
 
   if (!result) return null;
 
