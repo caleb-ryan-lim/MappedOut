@@ -1,8 +1,19 @@
 import { NextResponse } from "next/server";
 import { importHistoricalMappings } from "@/lib/historical-mappings";
+import { getAdminStatus, getConfigErrorResponse } from "@/lib/runtime-readiness";
 
 export async function POST(request: Request) {
   try {
+    const status = await getAdminStatus();
+    const configError = getConfigErrorResponse(status);
+
+    if (configError) {
+      return NextResponse.json(
+        { ...configError, readiness: status },
+        { status: configError.status },
+      );
+    }
+
     const formData = await request.formData();
     const file = formData.get("file");
 

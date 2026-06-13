@@ -4,26 +4,61 @@ import { useEffect, useState } from "react";
 
 type JsonRecord = Record<string, unknown>;
 
+type AdminStatus = {
+  database: {
+    configured: boolean;
+    connected: boolean;
+    schemaReady: boolean;
+    error: string | null;
+  };
+  brightData: {
+    configured: boolean;
+    apiKeyConfigured: boolean;
+    zoneConfigured: boolean;
+  };
+  data: {
+    historicalImportRuns: number | null;
+    historicalMappings: number | null;
+    partnerUniversities: number | null;
+    overseasCourses: number | null;
+    scrapeJobs: number | null;
+  };
+  guidance: string[];
+};
+
 export function AdminDashboard() {
   const [message, setMessage] = useState("");
   const [imports, setImports] = useState<JsonRecord[]>([]);
   const [jobs, setJobs] = useState<JsonRecord[]>([]);
   const [includeLocal, setIncludeLocal] = useState(false);
+  const [status, setStatus] = useState<AdminStatus | null>(null);
 
   async function refresh() {
-    const [importsResponse, jobsResponse] = await Promise.all([
+    const [statusResponse, importsResponse, jobsResponse] = await Promise.all([
+      fetch("/api/admin/status"),
       fetch("/api/admin/imports"),
       fetch("/api/admin/scrape-jobs"),
     ]);
-    setImports((await importsResponse.json()).imports);
-    setJobs((await jobsResponse.json()).jobs);
+
+    const statusPayload = (await statusResponse.json()) as AdminStatus;
+    const importsPayload = (await importsResponse.json()) as {
+      imports: JsonRecord[];
+    };
+    const jobsPayload = (await jobsResponse.json()) as {
+      jobs: JsonRecord[];
+    };
+
+    setStatus(statusPayload);
+    setImports(importsPayload.imports ?? []);
+    setJobs(jobsPayload.jobs ?? []);
   }
 
   useEffect(() => {
     let isMounted = true;
 
     async function load() {
-      const [importsResponse, jobsResponse] = await Promise.all([
+      const [statusResponse, importsResponse, jobsResponse] = await Promise.all([
+        fetch("/api/admin/status"),
         fetch("/api/admin/imports"),
         fetch("/api/admin/scrape-jobs"),
       ]);
@@ -32,8 +67,9 @@ export function AdminDashboard() {
         return;
       }
 
-      setImports((await importsResponse.json()).imports);
-      setJobs((await jobsResponse.json()).jobs);
+      setStatus((await statusResponse.json()) as AdminStatus);
+      setImports(((await importsResponse.json()) as { imports: JsonRecord[] }).imports ?? []);
+      setJobs(((await jobsResponse.json()) as { jobs: JsonRecord[] }).jobs ?? []);
     }
 
     void load();
@@ -74,6 +110,13 @@ export function AdminDashboard() {
     await refresh();
   }
 
+  const databaseReady = Boolean(
+    status?.database.configured && status.database.connected && status.database.schemaReady,
+  );
+  const canImport = databaseReady;
+  const canScrapePartners = databaseReady;
+  const canScrapeCourses = databaseReady && Boolean(status?.brightData.configured);
+
   return (
     <div className="space-y-6">
       <section className="glass-panel rounded-[2rem] p-6">
@@ -88,6 +131,60 @@ export function AdminDashboard() {
         {message ? <p className="mt-4 text-sm text-[var(--success)]">{message}</p> : null}
       </section>
 
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <StatusCard
+          label="Database"
+          ok={Boolean(status?.database.configured && status.database.connected)}
+          value={
+            status?.database.configured
+              ? status.database.connected
+                ? "Connected"
+                : "Configured, not reachable"
+              : "Not configured"
+          }
+        />
+        <StatusCard
+          label="Migrations"
+          ok={Boolean(status?.database.schemaReady)}
+          value={status?.database.schemaReady ? "Ready" : "Not applied"}
+        />
+        <StatusCard
+          label="Bright Data"
+          ok={Boolean(status?.brightData.configured)}
+          value={status?.brightData.configured ? "Configured" : "Not configured"}
+        />
+        <StatusCard
+          label="Historical mappings"
+          ok={Boolean((status?.data.historicalMappings ?? 0) > 0)}
+          value={String(status?.data.historicalMappings ?? 0)}
+        />
+      </section>
+
+      <section className="glass-panel rounded-[2rem] p-6">
+        <h2 className="text-xl font-semibold">Production readiness</h2>
+        <div className="mt-4 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="space-y-3 text-sm leading-7 text-[var(--ink-soft)]">
+            {status?.guidance.length ? (
+              status.guidance.map((step) => (
+                <p key={step} className="rounded-[1.2rem] border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-3">
+                  {step}
+                </p>
+              ))
+            ) : (
+              <p className="rounded-[1.2rem] border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-3">
+                Production readiness looks healthy. Continue with import, partner refresh, and pilot scraping.
+              </p>
+            )}
+          </div>
+
+          <div className="rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface-strong)] p-4 text-xs text-[var(--ink-soft)]">
+            <pre className="overflow-x-auto whitespace-pre-wrap">
+              {JSON.stringify(status, null, 2)}
+            </pre>
+          </div>
+        </div>
+      </section>
+
       <section className="grid gap-6 lg:grid-cols-[1fr_1fr]">
         <form onSubmit={handleImport} className="glass-panel rounded-[2rem] p-6">
           <h2 className="text-xl font-semibold">Historical Excel import</h2>
@@ -98,9 +195,13 @@ export function AdminDashboard() {
             type="file"
             name="file"
             accept=".xlsx,.csv"
-            className="mt-5 block w-full rounded-xl border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-3"
+            disabled={!canImport}
+            className="mt-5 block w-full rounded-xl border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-3 disabled:opacity-50"
           />
-          <button className="mt-4 rounded-full bg-[var(--accent)] px-5 py-3 text-sm font-semibold text-white">
+          <button
+            disabled={!canImport}
+            className="mt-4 rounded-full bg-[var(--accent)] px-5 py-3 text-sm font-semibold text-white disabled:opacity-50"
+          >
             Import historical mappings
           </button>
         </form>
@@ -114,7 +215,8 @@ export function AdminDashboard() {
             <button
               type="button"
               onClick={handlePartnerScrape}
-              className="w-full rounded-full border border-[var(--line)] px-5 py-3 text-sm font-semibold"
+              disabled={!canScrapePartners}
+              className="w-full rounded-full border border-[var(--line)] px-5 py-3 text-sm font-semibold disabled:opacity-50"
             >
               Refresh NUS partner universities
             </button>
@@ -129,7 +231,8 @@ export function AdminDashboard() {
             <button
               type="button"
               onClick={handleCourseScrape}
-              className="w-full rounded-full bg-[var(--accent)] px-5 py-3 text-sm font-semibold text-white"
+              disabled={!canScrapeCourses}
+              className="w-full rounded-full bg-[var(--accent)] px-5 py-3 text-sm font-semibold text-white disabled:opacity-50"
             >
               Run pilot partner course scrape
             </button>
@@ -141,25 +244,57 @@ export function AdminDashboard() {
         <div className="glass-panel rounded-[2rem] p-6">
           <h2 className="text-xl font-semibold">Import history</h2>
           <div className="mt-4 space-y-3 text-sm">
-            {imports.map((entry, index) => (
-              <pre key={index} className="overflow-x-auto rounded-2xl border border-[var(--line)] p-4 text-xs">
-                {JSON.stringify(entry, null, 2)}
-              </pre>
-            ))}
+            {imports.length > 0 ? (
+              imports.map((entry, index) => (
+                <pre key={index} className="overflow-x-auto rounded-2xl border border-[var(--line)] p-4 text-xs">
+                  {JSON.stringify(entry, null, 2)}
+                </pre>
+              ))
+            ) : (
+              <p className="rounded-2xl border border-[var(--line)] p-4 text-sm text-[var(--ink-soft)]">
+                No import history yet.
+              </p>
+            )}
           </div>
         </div>
 
         <div className="glass-panel rounded-[2rem] p-6">
           <h2 className="text-xl font-semibold">Scrape jobs</h2>
           <div className="mt-4 space-y-3 text-sm">
-            {jobs.map((entry, index) => (
-              <pre key={index} className="overflow-x-auto rounded-2xl border border-[var(--line)] p-4 text-xs">
-                {JSON.stringify(entry, null, 2)}
-              </pre>
-            ))}
+            {jobs.length > 0 ? (
+              jobs.map((entry, index) => (
+                <pre key={index} className="overflow-x-auto rounded-2xl border border-[var(--line)] p-4 text-xs">
+                  {JSON.stringify(entry, null, 2)}
+                </pre>
+              ))
+            ) : (
+              <p className="rounded-2xl border border-[var(--line)] p-4 text-sm text-[var(--ink-soft)]">
+                No scrape jobs yet.
+              </p>
+            )}
           </div>
         </div>
       </section>
+    </div>
+  );
+}
+
+function StatusCard({
+  label,
+  ok,
+  value,
+}: {
+  label: string;
+  ok: boolean;
+  value: string;
+}) {
+  return (
+    <div className="glass-panel rounded-[1.5rem] p-4">
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--ink-soft)]">{label}</p>
+      <p className="mt-2 text-2xl font-semibold">{value}</p>
+      <p className={`mt-2 text-xs ${ok ? "text-[var(--success)]" : "text-[var(--warning)]"}`}>
+        {ok ? "Ready" : "Needs action"}
+      </p>
     </div>
   );
 }

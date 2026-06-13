@@ -1,9 +1,32 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { discoverPartnerCourseCatalogue, scrapePartnerCourseCatalogue } from "@/lib/partner-scraping";
+import {
+  getAdminStatus,
+  getBrightDataErrorResponse,
+  getConfigErrorResponse,
+} from "@/lib/runtime-readiness";
 
 export async function POST(request: Request) {
   try {
+    const status = await getAdminStatus();
+    const configError = getConfigErrorResponse(status);
+
+    if (configError) {
+      return NextResponse.json(
+        { ...configError, readiness: status },
+        { status: configError.status },
+      );
+    }
+
+    if (!status.brightData.configured) {
+      const brightDataError = getBrightDataErrorResponse();
+      return NextResponse.json(
+        { ...brightDataError, readiness: status },
+        { status: brightDataError.status },
+      );
+    }
+
     const body = (await request.json().catch(() => ({}))) as {
       partnerUniversityIds?: string[];
       limit?: number;

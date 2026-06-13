@@ -97,10 +97,13 @@ export async function rankUniversities(request: MapRequest) {
         })
         .filter(Boolean);
 
-      const minimum = request.minimumClassification ?? MappingClassification.possible;
-      const filteredModuleMappings = moduleMappings.filter(
-        (mapping) => ORDER.indexOf(mapping.classification) <= ORDER.indexOf(minimum),
-      );
+      const minimumClassification = request.minimumClassification;
+      const filteredModuleMappings = minimumClassification
+        ? moduleMappings.filter(
+            (mapping) =>
+              ORDER.indexOf(mapping.classification) <= ORDER.indexOf(minimumClassification),
+          )
+        : moduleMappings;
 
       const mappedCodes = new Set(filteredModuleMappings.map((mapping) => mapping.nusModuleCode));
       const strongMappingCount = filteredModuleMappings.filter(

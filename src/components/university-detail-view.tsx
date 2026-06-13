@@ -9,7 +9,6 @@ type UniversityDetailViewProps = {
     nusModuleCodes: string[];
     targetSemester?: string;
     preferredCountries?: string[];
-    minimumClassification?: string;
     overseasOnly?: boolean;
   };
 };
@@ -124,13 +123,13 @@ export function UniversityDetailView({
           <div className="space-y-5 p-6 md:p-8">
             <div className="space-y-3">
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[var(--accent)]">
-                Dedicated detail page
+                University detail
               </p>
               <h1 className="font-[family-name:var(--font-display)] text-4xl leading-none md:text-6xl">
                 {university.name}
               </h1>
               <p className="max-w-3xl text-sm leading-7 text-[var(--ink-soft)]">
-                Review confidence, historical evidence, warnings, and source URLs for every candidate mapping before using this partner in your SEP plan.
+                Review the evidence behind each suggested mapping.
               </p>
             </div>
             <div className="grid gap-4 md:grid-cols-3">
@@ -140,9 +139,6 @@ export function UniversityDetailView({
                 label="Average confidence"
                 value={`${Math.round(university.averageConfidence * 100)}%`}
               />
-            </div>
-            <div className="rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface-strong)] px-5 py-4 text-sm leading-7 text-[var(--ink-soft)]">
-              This tool provides mapping recommendations only. Final approval is determined by NUS and the relevant course hosts. Historical mappings are indicative and may not carry over to future semesters.
             </div>
           </div>
           <div className="min-h-72 bg-[radial-gradient(circle_at_top,_rgba(255,213,163,0.44),_transparent_32%),linear-gradient(180deg,_rgba(194,116,62,0.12),_rgba(255,255,255,0.04))]" />

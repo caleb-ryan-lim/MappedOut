@@ -8,8 +8,15 @@ type ResultsProps = {
     nusModuleCodes: string[];
     targetSemester?: string;
     preferredCountries?: string[];
-    minimumClassification?: string;
     overseasOnly?: boolean;
+  };
+};
+
+type ErrorPayload = {
+  error: string;
+  errorCode?: string;
+  readiness?: {
+    guidance: string[];
   };
 };
 
@@ -42,16 +49,20 @@ type ApiResponse = {
       scoreBreakdown: Record<string, number>;
     }>;
   }>;
+  emptyState?: {
+    code: string;
+    title: string;
+    message: string;
+  } | null;
 };
 
 export function ResultsDashboard({ request }: ResultsProps) {
   const [data, setData] = useState<ApiResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ErrorPayload | null>(null);
   const detailQuery = new URLSearchParams({
     modules: request.nusModuleCodes.join(","),
     semester: request.targetSemester ?? "",
     countries: request.preferredCountries?.join(",") ?? "",
-    minimumClassification: request.minimumClassification ?? "possible",
     overseasOnly: String(request.overseasOnly ?? true),
   }).toString();
 
@@ -65,16 +76,20 @@ export function ResultsDashboard({ request }: ResultsProps) {
       signal: controller.signal,
     })
       .then(async (response) => {
+        const payload = (await response.json().catch(() => null)) as ApiResponse | ErrorPayload | null;
         if (!response.ok) {
-          const payload = await response.json().catch(() => null);
-          throw new Error(payload?.error ?? "Unable to rank universities.");
+          throw payload ?? { error: "Unable to rank universities." };
         }
-        return response.json();
+        return payload as ApiResponse;
       })
       .then((payload) => setData(payload))
-      .catch((err: Error) => {
-        if (err.name !== "AbortError") {
-          setError(err.message);
+      .catch((err: ErrorPayload | Error) => {
+        if ((err as Error).name !== "AbortError") {
+          if ("error" in (err as ErrorPayload)) {
+            setError(err as ErrorPayload);
+          } else {
+            setError({ error: (err as Error).message });
+          }
         }
       });
 
@@ -84,11 +99,19 @@ export function ResultsDashboard({ request }: ResultsProps) {
   if (error) {
     return (
       <div className="glass-panel rounded-[2rem] p-8">
-        <p className="text-lg font-semibold">We hit a blocker.</p>
-        <p className="mt-2 text-sm text-[var(--ink-soft)]">{error}</p>
-        <p className="mt-4 text-sm text-[var(--ink-soft)]">
-          Make sure your database is migrated and your historical mappings have been imported from the admin page.
-        </p>
+        <p className="text-lg font-semibold">Setup incomplete.</p>
+        <p className="mt-2 text-sm text-[var(--ink-soft)]">{error.error}</p>
+        <div className="mt-4 space-y-2 text-sm text-[var(--ink-soft)]">
+          {error.errorCode === "DATABASE_NOT_CONFIGURED" ? (
+            <p>Set `DATABASE_URL`, run Prisma migrations, and import the historical workbook through the backend.</p>
+          ) : null}
+          {error.errorCode === "DATABASE_SCHEMA_NOT_READY" ? (
+            <p>Apply Prisma migrations to the hosted Postgres database before using ranking.</p>
+          ) : null}
+          {error.readiness?.guidance?.map((step) => (
+            <p key={step}>{step}</p>
+          ))}
+        </div>
       </div>
     );
   }
@@ -96,10 +119,42 @@ export function ResultsDashboard({ request }: ResultsProps) {
   if (!data) {
     return (
       <div className="glass-panel rounded-[2rem] p-8">
-        <p className="text-lg font-semibold">Crunching mapping evidence...</p>
+        <p className="text-lg font-semibold">Loading matches...</p>
         <p className="mt-2 text-sm text-[var(--ink-soft)]">
-          MappedOut is checking NUSMods metadata, historical SoC mappings, and current catalogue evidence.
+          Checking historical mappings and current partner course evidence.
         </p>
+      </div>
+    );
+  }
+
+  if (data.rankedUniversities.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div className="glass-panel rounded-[2rem] p-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-[0.3em] text-[var(--accent)]">
+                Results
+              </p>
+              <h1 className="mt-2 font-[family-name:var(--font-display)] text-4xl leading-none md:text-6xl">
+                Ranked universities
+              </h1>
+            </div>
+            <Link href="/planner" className="rounded-full border border-[var(--line)] px-4 py-2 text-sm">
+              Adjust inputs
+            </Link>
+          </div>
+        </div>
+
+        <div className="glass-panel rounded-[2rem] p-8">
+          <p className="text-lg font-semibold">
+            {data.emptyState?.title ?? "No universities are ready to rank yet."}
+          </p>
+          <p className="mt-2 text-sm leading-7 text-[var(--ink-soft)]">
+            {data.emptyState?.message ??
+              "The app is configured, but there is not enough imported evidence yet to produce ranked results."}
+          </p>
+        </div>
       </div>
     );
   }
@@ -110,20 +165,16 @@ export function ResultsDashboard({ request }: ResultsProps) {
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.3em] text-[var(--accent)]">
-              Recommendation view
+              Results
             </p>
             <h1 className="mt-2 font-[family-name:var(--font-display)] text-4xl leading-none md:text-6xl">
-              Ranked partner universities
+              Ranked universities
             </h1>
           </div>
-          <Link href="/" className="rounded-full border border-[var(--line)] px-4 py-2 text-sm">
+          <Link href="/planner" className="rounded-full border border-[var(--line)] px-4 py-2 text-sm">
             Adjust inputs
           </Link>
         </div>
-        <p className="mt-4 text-sm leading-7 text-[var(--ink-soft)]">
-          This tool provides mapping recommendations only. Final approval is determined by NUS and the relevant
-          course hosts. Historical mappings are indicative and may not carry over to future semesters.
-        </p>
         {data.unresolvedModules.length > 0 ? (
           <p className="mt-3 text-sm text-[var(--warning)]">
             Unresolved modules: {data.unresolvedModules.join(", ")}. Verify those codes in NUSMods.

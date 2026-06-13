@@ -21,4 +21,4 @@ export const env = envSchema.parse({
 });
 
 export const hasDatabase = Boolean(env.DATABASE_URL);
-export const hasBrightData = Boolean(env.BRIGHT_DATA_API_KEY);
+export const hasBrightData = Boolean(env.BRIGHT_DATA_API_KEY && env.BRIGHT_DATA_ZONE);

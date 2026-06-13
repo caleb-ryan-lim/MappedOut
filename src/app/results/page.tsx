@@ -24,7 +24,6 @@ export default async function ResultsPage({ searchParams }: ResultsPageProps) {
             nusModuleCodes: modules,
             targetSemester: String(params.semester ?? ""),
             preferredCountries: countries,
-            minimumClassification: String(params.minimumClassification ?? "possible"),
             overseasOnly: String(params.overseasOnly ?? "true") !== "false",
           }}
         />

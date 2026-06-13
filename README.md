@@ -43,6 +43,12 @@ npm run prisma:generate
 npm run prisma:migrate
 ```
 
+For production or Vercel-hosted environments, apply migrations with:
+
+```bash
+npx prisma migrate deploy
+```
+
 5. Start the app:
 
 ```bash
@@ -105,6 +111,7 @@ Classifications:
 - `GET /api/modules/:code`
 - `GET /api/admin/imports`
 - `GET /api/admin/scrape-jobs`
+- `GET /api/admin/status`
 
 ## Tests
 

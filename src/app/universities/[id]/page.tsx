@@ -29,7 +29,6 @@ export default async function UniversityPage({
             nusModuleCodes: modules,
             targetSemester: String(query.semester ?? ""),
             preferredCountries: countries,
-            minimumClassification: String(query.minimumClassification ?? "possible"),
             overseasOnly: String(query.overseasOnly ?? "true") !== "false",
           }}
         />

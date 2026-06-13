@@ -1,13 +1,14 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f6f0e4;
-  --foreground: #251c18;
-  --surface: rgba(255, 252, 246, 0.76);
-  --surface-strong: rgba(255, 250, 243, 0.96);
-  --line: rgba(84, 54, 33, 0.12);
-  --accent: #3d6e9d;
-  --ink-soft: #6a5547;
+  --background: #efe5d7;
+  --foreground: #1f2b3c;
+  --surface: #fdfbf8;
+  --surface-strong: #f4eadc;
+  --line: rgba(31, 43, 60, 0.12);
+  --accent: #d8e6f2;
+  --ink-soft: #665c52;
+  --muted-foreground: #5f5851;
   --success: #1f7a4d;
   --warning: #996515;
   --font-sans: "Aptos", "Segoe UI", "Helvetica Neue", sans-serif;
@@ -25,10 +26,7 @@
 }
 
 body {
-  background:
-    radial-gradient(circle at top left, rgba(163, 196, 226, 0.28), transparent 32%),
-    radial-gradient(circle at top right, rgba(255, 205, 147, 0.45), transparent 22%),
-    linear-gradient(180deg, #faf5ed 0%, #f3ebde 48%, #eee2ce 100%);
+  background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), sans-serif;
 }
@@ -47,16 +45,23 @@ textarea {
 
 .glass-panel {
   background: var(--surface);
-  backdrop-filter: blur(16px);
   border: 1px solid var(--line);
-  box-shadow: 0 24px 50px rgba(94, 63, 37, 0.08);
+  box-shadow: 0 4px 14px rgba(46, 39, 31, 0.06);
 }
 
 .display-grid {
-  background-image:
-    linear-gradient(to right, rgba(84, 54, 33, 0.04) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(84, 54, 33, 0.04) 1px, transparent 1px);
-  background-size: 28px 28px;
+  background: var(--background);
+}
+
+.page-shell {
+  margin: 0 auto;
+  width: 100%;
+  max-width: 1500px;
+  padding: 4rem 3rem 5rem;
+}
+
+.section-rule {
+  border-top: 1px solid var(--line);
 }
 
 ::selection {
